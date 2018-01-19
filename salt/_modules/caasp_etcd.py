@@ -7,14 +7,21 @@ log = logging.getLogger(__name__)
 # minimum number of etcd masters we recommend
 MIN_RECOMMENDED_MEMBER_COUNT = 3
 
+# port where etcd listens for clients
+ETCD_CLIENT_PORT = 2379
+
 
 def __virtual__():
     return "caasp_etcd"
 
 
-# Grain used for getting nodes
-# make sure 'network.interfaces' is in the pillar/mine.sls
-_GRAIN = 'network.interfaces'
+# the grain that is used for obtaining node names
+# make sure it is in the pillar/mine.sls
+_GRAIN_NAME = 'nodename'
+
+
+class NoEtcdServersException(Exception):
+    pass
 
 
 def _optimal_etcd_number(num_nodes):
@@ -33,13 +40,13 @@ def _get_num_kube(expr):
     Get the number of kubernetes nodes that in the cluster that match "expr"
     """
     log.debug("Finding nodes that match '%s' in the cluster", expr)
-    nodes = __salt__['mine.get'](expr, _GRAIN, expr_form='grain').values()
+    nodes = __salt__['mine.get'](expr, _GRAIN_NAME, expr_form='grain').values()
     # 'mine.get' is not available in the master, so it will return nothing
     # in that case, we can try again with saltutil.runner... uh?
     if not nodes:
         log.debug("... using 'saltutil.runner' for getting the '%s' nodes", expr)
         nodes = __salt__['saltutil.runner']('mine.get',
-                                            tgt=expr, fun=_GRAIN, tgt_type='grain').values()
+                                            tgt=expr, fun=_GRAIN_NAME, tgt_type='grain').values()
     return len(nodes)
 
 
@@ -87,3 +94,35 @@ def get_cluster_size():
     member_count = max(1, member_count)
     log.debug("using member count = %d", member_count)
     return member_count
+
+
+def etcdctl_args(skip_this=False, etcd_members=[]):
+    """
+    Build the list of args for 'etcdctl'
+    """
+    etcdctl_args = ""
+    etcdctl_args += " --ca-file " + __salt__['pillar.get']('ssl:ca_file')
+    etcdctl_args += " --key-file " + __salt__['pillar.get']('ssl:key_file')
+    etcdctl_args += " --cert-file " + __salt__['pillar.get']('ssl:crt_file')
+
+    this_name = __salt__['grains.get'](_GRAIN_NAME)
+
+    # build the list of etcd masters
+    if len(etcd_members) == 0:
+        etcd_members = __salt__["mine.get"](
+            "G@roles:etcd", _GRAIN_NAME, expr_form="compound").values()
+
+    etcd_members_urls = []
+    for name in etcd_members:
+        if skip_this and name == this_name:
+            continue
+        url = "https://{}:{}".format(name, ETCD_CLIENT_PORT)
+        etcd_members_urls.append(url)
+
+    if len(etcd_members) == 0:
+        log.error("no etcd members available for etcdctl!!")
+        raise NoEtcdServersException()
+
+    etcdctl_args += " --endpoints " + ",".join(etcd_members_urls)
+
+    return etcdctl_args

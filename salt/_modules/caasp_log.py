@@ -12,3 +12,12 @@ def error(*args, **kwargs):
     # TODO: use the builtin function (https://docs.saltstack.com/en/latest/topics/jinja/index.html#logs)
     #       once we Salt>2017.7.0
     log.error(*args, **kwargs)
+
+
+def warn(*args, **kwargs):
+    '''
+    Log a warning message
+    '''
+    # TODO: use the builtin function (https://docs.saltstack.com/en/latest/topics/jinja/index.html#logs)
+    #       once we Salt>2017.7.0
+    log.warn(*args, **kwargs)

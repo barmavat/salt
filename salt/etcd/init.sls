@@ -3,6 +3,8 @@ include:
   - ca-cert
   - cert
 
+{% set this_addr = salt['grains.get']('nodename') %}
+
 etcd:
   group.present:
     - name: etcd
@@ -55,10 +57,7 @@ etcd:
   # wait until etcd is actually up and running
   caasp_cmd.run:
     - name: |
-        etcdctl --key-file {{ pillar['ssl']['key_file'] }} \
-                --cert-file {{ pillar['ssl']['crt_file'] }} \
-                --ca-file {{ pillar['ssl']['ca_file'] }} \
-                --endpoints https://{{ grains['nodename'] }}:2379 \
+        etcdctl {{ salt.caasp_etcd.etcdctl_args(etcd_members=[this_addr]) }} \
                 cluster-health | grep "cluster is healthy"
     - retry:
         attempts: 10
